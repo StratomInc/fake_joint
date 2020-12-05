@@ -13,9 +13,7 @@
 
 #include <fstream>
 
-static const rclcpp::Logger LOGGER = rclcpp::get_logger("fake_joint_driver");
-
-FakeJointDriver::FakeJointDriver(const rclcpp::Node::SharedPtr& node)
+FakeJointDriver::FakeJointDriver(const rclcpp::Node::SharedPtr & node)
 {
   std::set<std::string> joint_set;
   std::map<std::string, double> start_position_map;
@@ -25,70 +23,69 @@ FakeJointDriver::FakeJointDriver(const rclcpp::Node::SharedPtr& node)
   include_joints_ = node->declare_parameter("include_joints", std::vector<std::string>());
   exclude_joints_ = node->declare_parameter("exclude_joints", std::vector<std::string>());
 
-  std::vector<std::string> joint_names = node->declare_parameter("start_position.joints", std::vector<std::string>());
-  std::vector<double> joint_values = node->declare_parameter("start_position.values", std::vector<double>());
+  std::vector<std::string> joint_names = node->declare_parameter(
+    "start_position.joints",
+    std::vector<std::string>());
+  std::vector<double> joint_values = node->declare_parameter(
+    "start_position.values",
+    std::vector<double>());
 
-  if (joint_names.size() != joint_values.size())
-  {
-    RCLCPP_ERROR_STREAM(LOGGER, "start_position.joints and start_position.values must have the same size");
+  if (joint_names.size() != joint_values.size()) {
+    RCLCPP_ERROR_STREAM(
+      node->get_logger(),
+      "start_position.joints and start_position.values must have the same size");
     return;
   }
 
-  for (std::size_t i = 0; i < joint_names.size(); i++)
+  for (std::size_t i = 0; i < joint_names.size(); i++) {
     start_position_map.emplace(joint_names.at(i), joint_values.at(i));
-
-  for (auto it = start_position_map.begin(); it != start_position_map.end(); it++)
-  {
-    RCLCPP_DEBUG_STREAM(LOGGER, "start_position: " << it->first << ": " << it->second);
   }
 
-  for (auto i = 0; i < include_joints_.size(); i++)
-  {
-    RCLCPP_DEBUG_STREAM(LOGGER, "include_joint[" << i << "]" << include_joints_[i]);
+  for (auto it = start_position_map.begin(); it != start_position_map.end(); it++) {
+    RCLCPP_INFO_STREAM(node->get_logger(), "start_position: " << it->first << ": " << it->second);
   }
-  for (auto i = 0; i < exclude_joints_.size(); i++)
-  {
-    RCLCPP_DEBUG_STREAM(LOGGER, "exclude_joint[" << i << "]" << exclude_joints_[i]);
+
+  for (auto i = 0; i < include_joints_.size(); i++) {
+    RCLCPP_INFO_STREAM(node->get_logger(), "include_joint[" << i << "]" << include_joints_[i]);
+  }
+  for (auto i = 0; i < exclude_joints_.size(); i++) {
+    RCLCPP_INFO_STREAM(node->get_logger(), "exclude_joint[" << i << "]" << exclude_joints_[i]);
   }
   // Read all joints in robot_description
-  if (use_description_)
-  {
-    std::string urdf_xml = node->declare_parameter("robot_description", std::string());
+  if (use_description_) {
+    std::string urdf_xml;
+    try {
+      urdf_xml = node->declare_parameter("robot_description", std::string());
+    } catch (...) {
+      node->get_parameter("robot_description", urdf_xml);
+    }
     urdf::Model urdf_model;
-    if (urdf_model.initString(urdf_xml))
-    {
-      for (auto it = urdf_model.joints_.begin(); it != urdf_model.joints_.end(); it++)
-      {
+    if (urdf_model.initString(urdf_xml)) {
+      for (auto it = urdf_model.joints_.begin(); it != urdf_model.joints_.end(); it++) {
         urdf::Joint joint = *it->second;
         // remove fixed and unknown joints
-        if (joint.type == urdf::Joint::FIXED || joint.type == urdf::Joint::UNKNOWN)
-        {
+        if (joint.type == urdf::Joint::FIXED || joint.type == urdf::Joint::UNKNOWN) {
           continue;
         }
         joint_set.insert(joint.name);
       }
-    }
-    else
-    {
-      RCLCPP_WARN(LOGGER, "We cannot find the parameter robot_description.");
+    } else {
+      RCLCPP_WARN(node->get_logger(), "We cannot find the parameter robot_description.");
     }
   }
   // Include joints into joint_set
-  for (auto i = 0; i < include_joints_.size(); i++)
-  {
+  for (auto i = 0; i < include_joints_.size(); i++) {
     joint_set.insert(include_joints_[i]);
   }
   // Exclude joints in joint_set
-  for (auto i = 0; i < exclude_joints_.size(); i++)
-  {
+  for (auto i = 0; i < exclude_joints_.size(); i++) {
     joint_set.erase(exclude_joints_[i]);
   }
   // Convert to vector (joint_names_)
   std::copy(joint_set.begin(), joint_set.end(), std::back_inserter(joint_names_));
   // Check the emptyness of joints
-  if (joint_names_.size() == 0)
-  {
-    RCLCPP_ERROR(LOGGER, "No joints is specified. Please use include_joints parameters.");
+  if (joint_names_.size() == 0) {
+    RCLCPP_ERROR(node->get_logger(), "No joints is specified. Please use include_joints parameters.");
     rclcpp::shutdown();
   }
   // Resize members
@@ -97,17 +94,12 @@ FakeJointDriver::FakeJointDriver(const rclcpp::Node::SharedPtr& node)
   act_vel.resize(joint_names_.size());
   act_eff.resize(joint_names_.size());
   op_mode.resize(joint_names_.size());
-  joint_state_handles_.resize(joint_names_.size());
-  joint_command_handles_.resize(joint_names_.size());
   joint_mode_handles_.resize(joint_names_.size());
 
   // Set start position
-  for (auto it = start_position_map.begin(); it != start_position_map.end(); it++)
-  {
-    for (auto i = 0; i < joint_names_.size(); i++)
-    {
-      if (joint_names_[i] == it->first)
-      {
+  for (auto it = start_position_map.begin(); it != start_position_map.end(); it++) {
+    for (auto i = 0; i < joint_names_.size(); i++) {
+      if (joint_names_[i] == it->first) {
         act_dis[i] = it->second;
         cmd_dis[i] = it->second;
       }
@@ -115,23 +107,24 @@ FakeJointDriver::FakeJointDriver(const rclcpp::Node::SharedPtr& node)
   }
 
   // Create joint_state_interface
-  for (int i = 0; i < joint_names_.size(); i++)
-  {
-    RCLCPP_DEBUG_STREAM(LOGGER, "joint[" << i << "]:" << joint_names_[i]);
-    // Connect and register the joint_state_interface
-    joint_state_handles_[i] =
-        hardware_interface::JointStateHandle(joint_names_[i], &act_dis[i], &act_vel[i], &act_eff[i]);
-    if (register_joint_state_handle(&joint_state_handles_[i]) != hardware_interface::return_type::OK)
-      throw std::runtime_error("unable to register " + joint_state_handles_[i].get_name());
-
-    joint_command_handles_[i] = hardware_interface::JointCommandHandle(joint_names_[i], &cmd_dis[i]);
-    if (register_joint_command_handle(&joint_command_handles_[i]) != hardware_interface::return_type::OK)
-    {
-      throw std::runtime_error("unable to register " + joint_command_handles_[i].get_name());
+  const std::vector<std::string> ifaces = {"position", "velocity", "effort"};
+  for (int i = 0; i < joint_names_.size(); i++) {
+    for (const auto & iface : ifaces) {
+      if (register_joint(joint_names_[i], iface, act_dis[i]) !=
+        hardware_interface::return_type::OK)
+      {
+        throw std::runtime_error("Unable to register " + iface + joint_names_[i]);
+      }
+      if (register_joint(joint_names_[i], iface + "_command", act_dis[i]) !=
+        hardware_interface::return_type::OK)
+      {
+        throw std::runtime_error("Unable to register " + iface + "_command" + joint_names_[i]);
+      }
     }
 
     joint_mode_handles_[i] = hardware_interface::OperationModeHandle(joint_names_[i], &op_mode[i]);
-    if (register_operation_mode_handle(&joint_mode_handles_[i]) != hardware_interface::return_type::OK)
+    if (register_operation_mode_handle(&joint_mode_handles_[i]) !=
+      hardware_interface::return_type::OK)
     {
       throw std::runtime_error("unable to register " + joint_mode_handles_[i].get_name());
     }
@@ -147,6 +140,11 @@ FakeJointDriver::~FakeJointDriver()
  */
 void FakeJointDriver::update(void)
 {
-  // only do loopback
-  act_dis = cmd_dis;
+  for (const auto & joint_name : joint_names_) {
+    auto ph = std::make_shared<hardware_interface::JointHandle>(joint_name, "position");
+    auto pch = std::make_shared<hardware_interface::JointHandle>(joint_name, "position_command");
+    get_joint_handle(*ph);
+    get_joint_handle(*pch);
+    ph->set_value(pch->get_value());
+  }
 }

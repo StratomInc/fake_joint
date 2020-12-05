@@ -21,19 +21,15 @@ void spin(std::shared_ptr<rclcpp::executors::MultiThreadedExecutor> exe)
 /**
  * @brief Main function
  */
-int main(int argc, char** argv)
+int main(int argc, char ** argv)
 {
   // Init ROS node
   rclcpp::init(argc, argv);
   auto executor = std::make_shared<rclcpp::executors::MultiThreadedExecutor>();
   auto node = rclcpp::Node::make_shared("fake_joint_driver_node");
-
-  auto controller_name = node->declare_parameter("controller_name", std::string());
-  if (controller_name.empty())
-  {
-    RCLCPP_ERROR(LOGGER, "Can't have empty controller name -- please set the parameter `controller_name`");
-    return -1;
-  }
+  auto controller_name = node->declare_parameter(
+    "controller_name",
+    "arm_controller");
 
   // Create hardware interface
   auto robot = std::make_shared<FakeJointDriver>(node);
@@ -48,16 +44,17 @@ int main(int argc, char** argv)
 
   // we can either configure each controller individually through its services
   // or we use the controller manager to configure every loaded controller
-  if (cm.configure() != controller_interface::return_type::SUCCESS)
-  {
+  const std::vector<std::string> start {"fake_joint_state_controller", controller_name};
+  const std::vector<std::string> stop;
+  auto rc = cm.switch_controller(start, stop, 1);
+  if (rc != controller_interface::return_type::SUCCESS) {
     RCLCPP_ERROR(LOGGER, "at least one controller failed to configure");
     return -1;
   }
   RCLCPP_INFO(LOGGER, "Successfully configured all controllers");
 
   // and activate all controller
-  if (cm.activate() != controller_interface::return_type::SUCCESS)
-  {
+  if (cm.update() != controller_interface::return_type::SUCCESS) {
     RCLCPP_ERROR(LOGGER, "At least one controller failed to activate");
     return -1;
   }
@@ -65,8 +62,7 @@ int main(int argc, char** argv)
 
   // Set spin rate
   rclcpp::Rate rate(SPIN_RATE);
-  while (rclcpp::ok())
-  {
+  while (rclcpp::ok()) {
     robot->update();
     cm.update();
     rate.sleep();

@@ -16,10 +16,10 @@ find_package(xacro REQUIRED)
 
 include_directories(include)
 
-add_executable(fake_joint_driver_node
-  src/fake_joint_driver_node.cpp src/fake_joint_driver.cpp)
-
-ament_target_dependencies(fake_joint_driver_node
+add_library(${PROJECT_NAME} SHARED
+  src/fake_joint_driver.cpp
+)
+ament_target_dependencies(${PROJECT_NAME}
     rclcpp
     controller_manager
     hardware_interface
@@ -27,7 +27,21 @@ ament_target_dependencies(fake_joint_driver_node
     urdf
 )
 
-install(TARGETS fake_joint_driver_node
+add_executable(fake_joint_driver_node
+  src/fake_joint_driver_node.cpp 
+)
+target_link_libraries(fake_joint_driver_node
+  ${PROJECT_NAME}
+)
+ament_target_dependencies(fake_joint_driver_node
+  rclcpp
+  controller_manager
+  hardware_interface
+  controller_interface
+  urdf
+)
+
+install(TARGETS fake_joint_driver_node ${PROJECT_NAME}
   RUNTIME DESTINATION lib/${PROJECT_NAME}
 )
 
@@ -38,7 +52,7 @@ install(DIRECTORY config robot test
 #   PROGRAMS test/test_fake_joint_driver.py
 #   DESTINATION share/test)
 
-install(DIRECTORY include/${PROJECT_NAME}/
+install(DIRECTORY include/${PROJECT_NAME}
   DESTINATION include)
 
 # if(CATKIN_ENABLE_TESTING)
@@ -55,5 +69,7 @@ install(DIRECTORY include/${PROJECT_NAME}/
 
 #   add_rostest(test/fake_joint_driver.test)
 # endif()
+ament_export_libraries(${PROJECT_NAME})
+ament_export_include_directories(include)
 ament_export_dependencies(rclcpp)
 ament_package()
